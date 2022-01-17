@@ -1,0 +1,88 @@
+---
+title: "dynamic plot"
+author: "Christian Porras"
+date: "1/17/2022"
+output:
+  html_document:
+    theme: cosmo
+    toc: yes
+    toc_float: yes
+  pdf_document:
+    toc: yes
+subtitle: MD++ Datathon 2022 
+urlcolor: blue
+---
+
+```{r,render=FALSE}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(leaflet)
+library(usmap)
+```
+
+# Read HCUP
+```{r,}
+# nis_2019_core <- read_csv("nis/NIS_2019_Core.csv",col_names = T)
+# nis_2019_hosp <- read_csv("nis/NIS_2019_Hospital.csv",col_names = T)
+# nis_2019_sev <- read_csv("nis/NIS_2019_Severity.csv",col_names = T)
+```
+
+## cat map table
+
+# TODO: Get processed data from team
+
+Want a table with the following:
+* Cols = key_nis, hosp_division,  ASTHMA ETC
+* Row = NIS ENTRIES
+```{r}
+### USING SIMULATED DATA
+set.seed(1)
+regions <- c(rep("New England", length(.new_england)),
+             rep("Middle Atlantic",length(.mid_atlantic)),
+             rep("East North Central",length(.east_north_central)),
+             rep("West North Central",length(.west_north_central)),
+             rep("South Atlantic",length(.south_atlantic)),
+             rep("East South Central",length(.east_south_central)),
+             rep("West South Central",length(.west_south_central)),
+             rep("Mountain",length(.mountain)),
+             rep("Pacific",length(.pacific)))
+
+states <- c(.new_england,
+            .mid_atlantic,
+            .east_north_central,
+            .west_north_central,
+            .south_atlantic,
+            .east_south_central,
+            .west_south_central,
+            .mountain,
+            .pacific
+)
+### GENERATE PREVELANCE DIST ACROSS REGIONS
+prev_dist <- rnorm(table(regions), mean = 0.08, sd=0.08)
+prev <- c(rep(prev_dist[1], length(.new_england)),
+             rep(prev_dist[2],length(.mid_atlantic)),
+             rep(prev_dist[3],length(.east_north_central)),
+             rep(prev_dist[4],length(.west_north_central)),
+             rep(prev_dist[5],length(.south_atlantic)),
+             rep(prev_dist[6],length(.east_south_central)),
+             rep(prev_dist[7],length(.west_south_central)),
+             rep(prev_dist[8],length(.mountain)),
+             rep(prev_dist[9],length(.pacific)))
+dummy_df <- data.frame(hosp_division = regions,
+                       state = states,
+                       prev = prev
+)
+```
+
+
+```{r}
+plot_usmap(data = dummy_df,
+           values = "prev",
+           color = "black") +
+  scale_fill_continuous(low ="white", high ="red",
+                        name = "Prevalence",
+                        label = scales::comma) +
+  theme(legend.position = "right")
+```
+
