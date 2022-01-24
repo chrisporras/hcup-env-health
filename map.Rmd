@@ -1,0 +1,142 @@
+---
+title: "Asthma_map2"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+```{r}
+
+install.packages("usmap")
+install.packages("reshape2")
+install.packages('knitr')
+install.packages('rMaps')
+library(knitr)
+library(ggplot2)
+library(tidyverse)
+library(shiny)
+library(leaflet)
+library(RColorBrewer)
+library(dbplyr)
+library(usmap)
+library(reshape2)
+
+asthma <- read_csv("~/Desktop/core_asthma_drg_map_data.csv")
+state <- read_csv("~/Desktop/state_region.csv")
+month <- read_csv("~/Desktop/month_year3.csv")
+combo <- asthma %>% group_by(amonth,year,hosp_division) %>% tally()
+mapdf <- merge(combo,state,by="hosp_division")
+mapdf2 <-merge(mapdf,month, by=c("amonth","year"))
+
+
+datm2 <- transform(mapdf,
+  fillKey = cut(n, quantile(n, seq(0, 1, 1/6)), labels = LETTERS[1:6])
+)
+print(datm2)
+kable(head(datm2), format = 'html', table.attr = "class=nofluid")
+
+```
+```{r}
+fills = setNames(
+  c(RColorBrewer::brewer.pal(6, 'YlOrRd'), 'white'),
+  c(LETTERS[1:6], 'defaultFill')
+)
+
+
+install.packages("devtools")
+library("devtools")
+require(devtools)
+install_github('ramnathv/rCharts@dev')
+install_github('ramnathv/rMaps')
+
+
+install.packages('rCharts')
+library(rCharts)
+library(plyr); library(rMaps)
+dat2 <- dlply(na.omit(datm2), "year", function(x){
+  y = toJSONArray2(x, json = F)
+  names(y) = lapply(y, '[[', 'state')
+  return(y)
+})
+```
+```{r}
+options(rcharts.cdn = TRUE)
+map <- Datamaps$new()
+map$set(
+  dom = 'chart_1',
+  scope = 'usa',
+  fills = fills,
+  data = dat2[[1]],
+  legend = TRUE,
+  labels = TRUE
+)
+map
+
+
+map2 = map$copy()
+map2$set(
+  bodyattrs = "ng-app ng-controller='rChartsCtrl'"
+)
+map2$addAssets(
+  jshead = "http://cdnjs.cloudflare.com/ajax/libs/angular.js/1.2.1/angular.min.js"
+)
+
+
+map2$setTemplate(chartDiv = "
+  <div class='container'>
+    <input id='slider' type='range' min=2016 max=2019 ng-model='year' width=200>
+    <span ng-bind='year'></span>
+    <div id='' class='rChart datamaps'></div>  
+  </div>
+  <script>
+    function rChartsCtrl($scope){
+      $scope.year = 2016;
+      $scope.$watch('year', function(newYear){
+        map.updateChoropleth(chartParams.newData[newYear]);
+      })
+    }
+  </script>"
+)
+
+map2$set(newData = dat2)
+map2
+
+map3 = map2$copy()
+map3$setTemplate(chartDiv = "
+  <div class='container'>
+    <button ng-click='animateMap()'>Play</button>
+    <div id='chart_1' class='rChart datamaps'></div>  
+  </div>
+  <script>
+    function rChartsCtrl($scope, $timeout){
+      $scope.year = 1960;
+      $scope.animateMap = function(){
+        if ($scope.year > 2010){
+          return;
+        }
+        mapchart_1.updateChoropleth(chartParams.newData[$scope.year]);
+        $scope.year += 1
+        $timeout($scope.animateMap, 1000)
+      }
+    }
+  </script>"
+)
+map3
+
+map4 <- ichoropleth(n ~ state,
+  data = mapdf2[,4:6],
+  pal = 'BuPu',
+  ncuts = 9,
+  animate = 'value',
+  legend = TRUE
+)
+map4
+
+map4$save('rMaps.html', cdn= TRUE)
+
+
+```
+
