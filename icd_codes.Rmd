@@ -1,0 +1,169 @@
+---
+title: "Generate_ICD_Mat"
+author: "Jonathan Dullea"
+date: "1/17/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tableone)
+library(ggfortify )
+library(data.table)
+library('LaF')
+library('dplyr')
+library('stringr')
+library(dplyr)
+library(icd)
+library(readr)
+library(factoextra)
+library(icd)
+```
+
+
+```{r}
+rm(list = ls())
+
+```
+
+```{r}
+data <- as.data.frame(fread("asthmatic_data.csv"))
+
+data$ID <- seq.int(nrow(data))
+
+```
+
+
+
+
+```{r}
+data_sub <- data
+
+all_ICD_Codes <- NULL
+
+var_string_base <- "i10_dx"
+
+for (i in 1:40){
+    var_string_i <- paste0(var_string_base , as.character(i))
+    ICD_Codes <- data_sub[c("ID",var_string_i)]
+    
+    ICD_Codes <- ICD_Codes[,colSums(is.na(ICD_Codes))<nrow(ICD_Codes)]
+    
+    
+    names(ICD_Codes)[2] <- "ICD_Code"
+    
+    all_ICD_Codes <- rbind(all_ICD_Codes, ICD_Codes)
+    print(i)
+    #data_in$any_asthma_dx[substr(data_in[[var_string_i]],1,3) == "J45"] <- 1
+}
+
+head(ICD_Codes)
+all_ICD_Codes <- all_ICD_Codes[!(is.na(all_ICD_Codes$ICD_Code) | all_ICD_Codes$ICD_Code==""),] 
+```
+
+
+
+
+```{r}
+unique_ICD_codes <- unique(all_ICD_Codes[c("ICD_Code")])
+```
+
+```{r}
+all_ICD_Codes_short <- substr(all_ICD_Codes[["ICD_Code"]],1,3)
+unique_ICD_codes_3_letter <- sort(unique(all_ICD_Codes_short))
+```
+
+
+
+
+
+```{r}
+n_to_include <-500
+
+tbl <- sort(table(all_ICD_Codes_short), decreasing = TRUE)
+rows_to_use <- sort(rownames(tbl[1:n_to_include]))
+
+
+for (code in rows_to_use){
+  
+  data[[code]] <- 0
+  
+  var_string_base <- "i10_dx"
+  for (i in 1:40){
+    var_string_i <- paste0(var_string_base , as.character(i))
+    data[[code]][substr(data[[var_string_i]],1,3) == code] <- 1
+  }
+  print(paste0(code,": " , sum(data[[code]])))
+
+}
+```
+
+
+
+
+
+```{r}
+write_csv(data, file = "asthma_data_with_ICD_processed.csv")
+```
+
+```{r}
+data <- as.data.frame(fread("asthma_data_with_ICD_processed.csv"))
+```
+
+
+```{r}
+
+data_sub <- sample_n(data[,138:637], 10000, replace=FALSE)
+
+pc_out <- prcomp(data_sub)
+
+plot(pc_out)
+```
+
+```{r}
+
+```
+```{r}
+fviz_pca_ind(pc_out, geom="point", col.ind = data_sub)
+```
+
+
+```{r}
+
+```
+
+```{r}
+CCI_conditions <- comorbid_charlson(all_ICD_Codes)
+CCI <- charlson(all_ICD_Codes)
+plot_comorbid(all_ICD_Codes)
+```
+
+
+
+```{r}
+hist(CCI)
+```
+
+
+
+```{r}
+tab_dat <- vapply(
+  unname(unlist(CCI_conditions)),
+  function(x) {
+    c(sprintf("%i (%.2f%%)", 
+              sum(nhds[Y, x]), 
+              100 * mean(nhds[Y, x])),
+      sprintf("%i (%.2f%%)",
+              sum(nhds[!Y, x]),
+              100 * mean(nhds[!Y, x])))
+  },
+  character(2)
+)
+knitr::kable(t(tab_dat), col.names = c("Emergency", "Not emergency"))
+```
+
+

@@ -1,0 +1,243 @@
+---
+title: "Read_and_Process_data"
+author: "Jonathan Dullea"
+date: "1/17/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+
+Some of these may not be necessary
+```{r}
+library(tableone)
+library(ggfortify )
+library(epiR)
+library(EpiStats)
+library(data.table)
+library('LaF')
+library('dplyr')
+library('stringr')
+library(dplyr)
+```
+
+
+This script requires a lot of memory. Best to clear before running. 
+```{r}
+rm(list = ls())
+```
+
+
+
+```{r}
+filename_2016 = "NIS_2016_Core.csv"
+filename_2017 = "NIS_2017_Core.csv"
+filename_2018 = "NIS_2018_Core.csv"
+filename_2019 = "NIS_2019_Core.csv"
+
+path = "C:/Users/jonat/OneDrive/Desktop/Medical School Research/Datathon/Datasets"
+
+setwd(path)
+```
+
+
+```{r}
+process_data_2016 <- function(data_in,prior_result){
+  
+  #This is a function that is called by laf::process_blocks(). 
+  #Process blocks is used to read in the large CVS file
+  #It reads in 50000 lines at a time. 
+  #This function then receives the data and operates on the subset of rows
+  #Currently, it identifies:
+  #     -people with asthma
+  #     -people admitted for asthma
+  #This version is set-up to operate on the 2016 data-source. A similar one is
+  #generated to operate on the 2017-2019 files.
+  #Process blocks sends chunks of data to this functio 
+  
+  #Needed to finish loop
+  if(nrow(data_in) == 0){
+    return(prior_result)
+  }
+
+  data_in$asthma_DRG <- 0
+  data_in$asthma_DRG[data_in$drg == 202 | data_in$drg == 203] <- 1
+  
+  
+  #Set-up variables for loops below
+  data_in$any_asthma_dx <- 0
+  var_string_base <- "i10_dx"
+  
+  #loop over the 30 possible ICD columns looking for codes that start with "J45" which indicated asthma
+  for (i in 1:30){
+    var_string_i <- paste0(var_string_base , as.character(i))
+    data_in$any_asthma_dx[substr(data_in[[var_string_i]],1,3) == "J45"] <- 1
+  }
+
+  #return patients with either a diagnosis of asthma, or an admission for asthma
+  #All with a admission reason of asthma should have a dx of asthma, but it could be wrong I guess
+  asthma_data_2016 <- data_in[data_in$asthma_DRG == 1 | data_in$any_asthma_dx == 1, ]
+
+  #return(c(nrow(asthma_data_2016), prior_result))
+  
+  return(rbind(asthma_data_2016, prior_result))
+
+}
+
+```
+
+```{r}
+process_data_2017_2019 <- function(data_in,prior_result){
+  
+  #This is a function that is called by laf::process_blocks(). 
+  #Process blocks is used to read in the large CVS file
+  #It reads in 50000 lines at a time. 
+  #This function then receives the data and operates on the subset of rows
+  #Currently, it identifies:
+  #     -people with asthma
+  #     -people admitted for asthma
+  #This version is set-up to operate on the 2017-2019 data-source. 
+
+  
+  #Needed to finish loop
+  if(nrow(data_in) == 0){
+    return(prior_result)
+  }
+
+  data_in$asthma_DRG <- 0
+  data_in$asthma_DRG[data_in$drg == 202 | data_in$drg == 203] <- 1
+  
+  
+  #Set-up variables for loops below
+  data_in$any_asthma_dx <- 0
+  var_string_base <- "i10_dx"
+  
+  #loop over the 30 possible ICD columns looking for codes that start with "J45" which indicated asthma
+  for (i in 1:40){
+    var_string_i <- paste0(var_string_base , as.character(i))
+    data_in$any_asthma_dx[substr(data_in[[var_string_i]],1,3) == "J45"] <- 1
+  }
+
+  #return patients with either a diagnosis of asthma, or an admission for asthma
+  #All with a admission reason of asthma should have a dx of asthma, but it could be wrong I guess
+  asthma_data <- data_in[data_in$asthma_DRG == 1 | data_in$any_asthma_dx == 1, ]
+
+  
+  return(rbind(asthma_data, prior_result))
+
+}
+```
+
+
+Read for 2016
+```{r}
+model <- detect_dm_csv(filename_2016, header = TRUE, nrows = 1000, sep = ",")
+model[["columns"]][["type"]][1:nrow(model$columns)] <- "string"
+df.laf <- laf_open(model)
+
+asthma_data_2016 <- process_blocks(df.laf, process_data_2016, nrows = 50000, progress = TRUE)
+asthma_data_2016$year <- 2016
+```
+
+Read for 2017
+```{r}
+#First detect a data model for your file:
+model <- detect_dm_csv(filename_2017, header = TRUE, nrows = 1000, sep = ",")
+model[["columns"]][["type"]][1:nrow(model$columns)] <- "string"
+df.laf <- laf_open(model)
+
+asthma_data_2017 <- process_blocks(df.laf, process_data_2017_2019, nrows = 50000, progress = TRUE)
+asthma_data_2017$year <- 2017
+```
+
+Read for 2018
+```{r}
+#First detect a data model for your file:
+model <- detect_dm_csv(filename_2018, header = TRUE, nrows = 1000, sep = ",")
+model[["columns"]][["type"]][1:nrow(model$columns)] <- "string"
+df.laf <- laf_open(model)
+
+asthma_data_2018 <- process_blocks(df.laf, process_data_2017_2019, nrows = 50000, progress = TRUE)
+asthma_data_2018$year <- 2018
+```
+
+Read for 2019
+```{r}
+#First detect a data model for your file:
+model <- detect_dm_csv(filename_2019, header = TRUE, nrows = 1000, sep = ",")
+model[["columns"]][["type"]][1:nrow(model$columns)] <- "string"
+df.laf <- laf_open(model)
+
+asthma_data_2019 <- process_blocks(df.laf, process_data_2017_2019, nrows = 50000, progress = TRUE)
+asthma_data_2019$year <- 2019
+```
+
+
+```{r}
+dim(asthma_data_2016)
+dim(asthma_data_2017)
+dim(asthma_data_2018)
+dim(asthma_data_2019)
+```
+
+```{r}
+df2016 <- data.frame(asthma_data_2016)
+df2017 <- data.frame(asthma_data_2017)
+df2018 <- data.frame(asthma_data_2018)
+df2019 <- data.frame(asthma_data_2019)
+
+tmp1 <- bind_rows(df2016,df2017)
+tmp2 <- bind_rows(tmp1, df2018)
+all_asthma_data <- bind_rows(tmp2, df2019)
+```
+
+
+Fixing Variable Types
+```{r}
+View(sapply(all_asthma_data, class))
+```
+
+```{r}
+library(tidyverse) 
+library(lubridate)
+```
+
+
+```{r}
+all_asthma_data <- all_asthma_data %>%
+    mutate_all(type.convert) %>%
+    mutate_if(is.factor, as.character)
+
+```
+
+```{r}
+mean(all_asthma_data$age, na.rm = TRUE)
+```
+
+
+```{r}
+write.csv(all_asthma_data,"asthmatic_data.csv", row.names = FALSE)
+```
+
+```{r}
+write_csv(all_asthma_data, file = "asthmatic_data.csv")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,489 @@
+---
+title: "Read_Severity_Data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tableone)
+library(ggfortify )
+library(data.table)
+library('LaF')
+library('dplyr')
+library('stringr')
+library(dplyr)
+library(icd)
+library(readr)
+library(factoextra)
+library(icd)
+library(umap)
+library(randomForest)
+library(randomForestSRC)
+library(dplyr)
+library(purrr)
+```
+
+```{r}
+filename_2016 = "NIS_2016_Severity.csv"
+filename_2017 = "NIS_2017_Severity.csv"
+filename_2018 = "NIS_2018_Severity.csv"
+filename_2019 = "NIS_2019_Severity.csv"
+
+path = "C:/Users/jonat/OneDrive/Desktop/Medical School Research/Datathon/Datasets"
+
+setwd(path)
+```
+
+
+```{r}
+sev_data_2016 <- as.data.frame(fread(filename_2016))
+sev_data_2016$key_year <- paste("2016", sev_data_2016$key_nis)
+
+sev_data_2017 <- as.data.frame(fread(filename_2017))
+sev_data_2017$key_year <- paste("2017", sev_data_2017$key_nis)
+
+sev_data_2018 <- as.data.frame(fread(filename_2018))
+sev_data_2018$key_year <- paste("2018", sev_data_2018$key_nis)
+
+sev_data_2019 <- as.data.frame(fread(filename_2019))
+sev_data_2019$key_year <- paste("2019", sev_data_2019$key_nis)
+```
+
+```{r}
+sev_data <- rbind(sev_data_2016,sev_data_2017,sev_data_2018,sev_data_2019)
+rm(sev_data_2016,sev_data_2017,sev_data_2018,sev_data_2019)
+```
+
+
+
+```{r}
+ast_data <- as.data.frame(fread("asthma_data_with_ICD_processed_cci.csv"))
+ast_data$key_year <- paste(ast_data$year, ast_data$key_nis)
+```
+
+```{r}
+ast_admit_data <- ast_data[ast_data$asthma_DRG == 1,]
+
+```
+
+
+```{r}
+weather_data <- as.data.frame(fread("combined_asthma_weather_data.csv"))
+weather_data$key_year <- paste(weather_data$year, weather_data$key_nis)
+weather_data_sub <- weather_data[c("key_year","avg_monthly_temp")]
+```
+
+
+```{r}
+ast_admit_data <- merge(x=ast_admit_data, y=sev_data, by="key_year",all.x = TRUE)
+ast_admit_data <- merge(x=ast_admit_data, y=weather_data_sub, by="key_year",all.x = TRUE)
+
+rm(ast_data)
+rm(sev_data)
+rm(weather_data_sub)
+rm(weather_data)
+```
+
+```{r}
+data_sub <- ast_admit_data[(ast_admit_data$los < 10 & ast_admit_data$hosp_division == 2),]
+data_sub <- data_sub[data_sub$age > 1,]
+```
+
+```{r}
+write.csv(data_sub, "final_data.csv")
+```
+
+
+```{r}
+ast_admit_data$amonth <- factor(ast_admit_data$amonth)
+ast_admit_data$season <- ""
+ast_admit_data$season[(ast_admit_data$amonth == 12 | ast_admit_data$amonth == 1 |ast_admit_data$amonth == 2)] <- "winter"
+ast_admit_data$season[(ast_admit_data$amonth == 3 | ast_admit_data$amonth == 4 |ast_admit_data$amonth == 5)] <- "spring"
+ast_admit_data$season[(ast_admit_data$amonth == 6 | ast_admit_data$amonth == 7 |ast_admit_data$amonth == 8)] <- "summer"
+ast_admit_data$season[(ast_admit_data$amonth == 9 | ast_admit_data$amonth == 10 |ast_admit_data$amonth == 11)] <- "fall"
+ast_admit_data$season <- factor(ast_admit_data$season)
+
+ast_admit_data$aweekend <- factor(ast_admit_data$aweekend, levels = c(0,1), labels = c("M-F","Sat/Sun"))
+ast_admit_data$died <- factor(ast_admit_data$died, levels = c(0,1), labels = c("no", "yes"))
+ast_admit_data$elective <- factor(ast_admit_data$elective, levels = c(0,1), labels = c("non-elective", "elective"))
+ast_admit_data$female <- factor(ast_admit_data$female, levels = c(0,1), labels = c("male", "female"))
+
+ast_admit_data$pay1 <- factor(ast_admit_data$pay1, levels = c(1,2,3,4,5,6), labels = c("medicare", "medicaid","private", "selfpay", "nocharge", "other"))
+
+ast_admit_data$pl_nchs <- factor(ast_admit_data$pl_nchs, levels = c(1,2,3,4,5,6), labels = c("central", "fringe", "250K-1M", "50K-250K", "micropolitan", "small"))
+
+ast_admit_data$tran_in <- factor(ast_admit_data$tran_in, levels = c(0,1,2), labels = c("no", "from acute", "from health facility"))
+
+ast_admit_data$zipinc_qrtl <- factor(ast_admit_data$zipinc_qrtl, levels = c(1,2,3,4), labels = c("1st","2nd","3rd","4th") )
+
+ast_admit_data$race <- factor(ast_admit_data$race, levels = c(1,2,3,4,5,6), labels = c("white", "black","hispanic","API","native","other"))
+```
+
+
+```{r}
+vars <- c("age","aweekend","female","pl_nchs","tran_in","zipinc_qrtl","race","avg_monthly_temp","aprdrg_severity")
+```
+
+```{r}
+match(vars,names(ast_admit_data))
+
+head(ast_admit_data[, c(139:638,names(ast_admit_data)%in%vars)])
+```
+ 
+
+
+```{r}
+data_sub <- ast_admit_data[ast_admit_data$aprdrg_severity != 0,]
+data_sub$aprdrg_severity <- factor(data_sub$aprdrg_severity)
+
+data_sub_1 <- data_sub[, names(data_sub)%in%vars]
+data_sub_2 <- data_sub[, c(139:638)]
+data_sub <- cbind(data_sub_1,data_sub_2)
+data_sub <- data_sub[complete.cases(data_sub),]
+
+data_sub <- data_sub %>% 
+  group_split(aprdrg_severity) %>% 
+  map2_dfr(c(300,300,300,300), ~ slice_sample(.x, n = .y))
+
+data_sub <- as.data.frame(data_sub)
+
+#data_sub <- data_sub %>% slice_sample(n=5000)
+
+
+o <- tune(aprdrg_severity ~ .,
+  data=data_sub, block.size = 1, doBest = TRUE)
+
+print(o$rf)
+
+## visualize the nodesize/mtry OOB surface
+if (library("akima", logical.return = TRUE)) {
+
+  ## nice little wrapper for plotting results
+  plot.tune <- function(o, linear = TRUE) {
+    x <- o$results[,1]
+    y <- o$results[,2]
+    z <- o$results[,3]
+    so <- interp(x=x, y=y, z=z, linear = linear)
+    idx <- which.min(z)
+    x0 <- x[idx]
+    y0 <- y[idx]
+    filled.contour(x = so$x,
+                   y = so$y,
+                   z = so$z,
+                   xlim = range(so$x, finite = TRUE) + c(-2, 2),
+                   ylim = range(so$y, finite = TRUE) + c(-2, 2),
+                   color.palette =
+                     colorRampPalette(c("yellow", "red")),
+                   xlab = "nodesize",
+                   ylab = "mtry",
+                   main = "error rate for nodesize and mtry",
+                   key.title = title(main = "OOB error", cex.main = 1),
+                   plot.axes = {axis(1);axis(2);points(x0,y0,pch="x",cex=1,font=2);
+                                points(x,y,pch=16,cex=.25)})
+  }
+
+  ## plot the surface
+  plot.tune(o)
+
+}
+```
+
+
+```{r}
+data_sub <- ast_admit_data[ast_admit_data$aprdrg_severity != 0,]
+data_sub$aprdrg_severity <- factor(data_sub$aprdrg_severity)
+
+data_sub_1 <- data_sub[, names(data_sub)%in%vars]
+data_sub_2 <- data_sub[, c(139:638)]
+data_sub <- cbind(data_sub_1,data_sub_2)
+data_sub <- data_sub[complete.cases(data_sub),]
+
+data_sub <- data_sub %>% 
+  group_split(aprdrg_severity) %>% 
+  map2_dfr(c(3000,3000,3000,3000), ~ slice_sample(.x, n = .y))
+
+data_sub <- as.data.frame(data_sub)
+
+#data_sub <- data_sub %>% slice_sample(n=5000)
+
+
+rf3 <- rfsrc(aprdrg_severity ~ .,
+  data=data_sub, block.size = 1, importance = TRUE, mtry = 85, nodesize = 4)
+rf3
+
+plot(rf3)
+
+```
+
+
+```{r}
+vars <- c("age","aweekend","female","pl_nchs","tran_in","zipinc_qrtl","race","avg_monthly_temp","aprdrg_severity_2bin")
+
+data_sub <- ast_admit_data[ast_admit_data$aprdrg_severity != 0,]
+data_sub$aprdrg_severity <- factor(data_sub$aprdrg_severity)
+
+data_sub$aprdrg_severity_2bin <- 0
+data_sub$aprdrg_severity_2bin[(data_sub$aprdrg_severity == 1 | data_sub$aprdrg_severity == 2)] <- 1
+data_sub$aprdrg_severity_2bin[(data_sub$aprdrg_severity == 3 | data_sub$aprdrg_severity == 4)] <- 2
+
+data_sub$aprdrg_severity_2bin <- factor(data_sub$aprdrg_severity_2bin, levels = c(1,2), labels = c("1","2"))
+
+
+data_sub_1 <- data_sub[, names(data_sub)%in%vars]
+data_sub_2 <- data_sub[, c(139:638)]
+data_sub <- cbind(data_sub_1,data_sub_2)
+data_sub <- data_sub[complete.cases(data_sub),]
+
+data_sub <- data_sub %>% 
+  group_split(aprdrg_severity_2bin) %>% 
+  map2_dfr(c(10000,10000), ~ slice_sample(.x, n = .y))
+
+data_sub <- as.data.frame(data_sub)
+
+#data_sub <- data_sub %>% slice_sample(n=5000)
+
+
+rf3 <- rfsrc(aprdrg_severity_2bin ~ .,
+  data=data_sub, block.size = 1, importance = TRUE, mtry = 85, nodesize = 4)
+rf3
+
+plot(rf3)
+
+```
+
+```{r}
+vs.rf3 <- var.select(object = rf3)
+```
+
+
+```{r}
+data_sub_rf_vs <- data.frame(data_sub[,c(vs.rf3$topvars,"aprdrg_severity_2bin")])
+
+rf4 <- rfsrc(aprdrg_severity_2bin ~ .,
+  data=data_sub_rf_vs, block.size = 1, importance = TRUE, mtry = 85, nodesize = 4)
+rf4
+
+plot(rf4)
+```
+```{r}
+vimp(rf4)
+```
+
+
+```{r}
+pc_out <- prcomp(data_sub[,c(10:509)])
+plot(pc_out)
+```
+ 
+```{r}
+umap_out = umap(data_sub[,c(10:509)])
+```
+
+
+```{r}
+df <- data.frame(x = umap_out$layout[,1],
+                 y = umap_out$layout[,2],
+                 asthma_data = data_sub$avg_monthly_temp > 10)
+```
+
+
+```{r}
+ggplot(df, aes(x, y, colour = asthma_data)) +
+  geom_point(alpha = 0.05 )
+```
+
+
+```{r}
+vars <- c("age","aweekend","female","pl_nchs","tran_in","zipinc_qrtl","race","avg_monthly_temp","los")
+
+data_sub <- ast_admit_data[ast_admit_data$aprdrg_severity < 10,]
+#data_sub$aprdrg_severity <- factor(data_sub$aprdrg_severity)
+
+data_sub$aprdrg_severity_2bin <- 0
+data_sub$aprdrg_severity_2bin[(data_sub$aprdrg_severity == 1 | data_sub$aprdrg_severity == 2)] <- 1
+data_sub$aprdrg_severity_2bin[(data_sub$aprdrg_severity == 3 | data_sub$aprdrg_severity == 4)] <- 2
+
+data_sub$aprdrg_severity_2bin <- factor(data_sub$aprdrg_severity_2bin, levels = c(1,2), labels = c("1","2"))
+
+
+data_sub_1 <- data_sub[, names(data_sub)%in%vars]
+data_sub_2 <- data_sub[, c(139:638)]
+data_sub <- cbind(data_sub_1,data_sub_2)
+data_sub <- data_sub[complete.cases(data_sub),]
+
+#data_sub <- data_sub %>% 
+#  group_split(aprdrg_severity_2bin) %>% 
+#  map2_dfr(c(10000,10000), ~ slice_sample(.x, n = .y))
+
+data_sub <- as.data.frame(data_sub)
+
+data_sub <- data_sub %>% slice_sample(n=500)
+
+
+o <- tune(los ~ .,
+  data=data_sub, block.size = 1, doBest = TRUE)
+
+print(o$rf)
+
+## visualize the nodesize/mtry OOB surface
+if (library("akima", logical.return = TRUE)) {
+
+  ## nice little wrapper for plotting results
+  plot.tune <- function(o, linear = TRUE) {
+    x <- o$results[,1]
+    y <- o$results[,2]
+    z <- o$results[,3]
+    so <- interp(x=x, y=y, z=z, linear = linear)
+    idx <- which.min(z)
+    x0 <- x[idx]
+    y0 <- y[idx]
+    filled.contour(x = so$x,
+                   y = so$y,
+                   z = so$z,
+                   xlim = range(so$x, finite = TRUE) + c(-2, 2),
+                   ylim = range(so$y, finite = TRUE) + c(-2, 2),
+                   color.palette =
+                     colorRampPalette(c("yellow", "red")),
+                   xlab = "nodesize",
+                   ylab = "mtry",
+                   main = "error rate for nodesize and mtry",
+                   key.title = title(main = "OOB error", cex.main = 1),
+                   plot.axes = {axis(1);axis(2);points(x0,y0,pch="x",cex=1,font=2);
+                                points(x,y,pch=16,cex=.25)})
+  }
+
+  ## plot the surface
+  plot.tune(o)
+
+}
+```
+
+
+```{r}
+data_sub <- as.data.frame(fread("final_data.csv"))
+```
+
+
+
+```{r}
+seed = 1
+
+vars <- c("age","aweekend","female","pl_nchs","tran_in","zipinc_qrtl","race","avg_monthly_temp","pay1","los")
+#data_sub$aprdrg_severity <- factor(data_sub$aprdrg_severity)
+
+data_sub <- data_sub_full
+data_sub_1 <- data_sub[, names(data_sub)%in%vars]
+data_sub_2 <- data_sub[, c(140:639)]
+data_sub <- cbind(data_sub_1,data_sub_2)
+data_sub <- data_sub[complete.cases(data_sub),]
+
+#data_sub <- data_sub %>% 
+#  group_split(aprdrg_severity_2bin) %>% 
+#  map2_dfr(c(10000,10000), ~ slice_sample(.x, n = .y))
+
+data_sub <- as.data.frame(data_sub)
+
+data_sub <- data_sub %>% slice_sample(n=2000)
+
+split1<- sample(c(rep(0, 0.5 * nrow(data_sub)), rep(1, 0.5 * nrow(data_sub))))
+
+train <- data[split1 == 0, ]   
+test <- data[split1 == 1, ]   
+```
+
+
+```{r}
+data_sub_optium <- data_sub %>% slice_sample(n=2000)
+
+o <- tune(los ~ .,
+  data=data_sub, block.size = 1, doBest = TRUE)
+
+print(o$rf)
+
+## visualize the nodesize/mtry OOB surface
+if (library("akima", logical.return = TRUE)) {
+
+  ## nice little wrapper for plotting results
+  plot.tune <- function(o, linear = TRUE) {
+    x <- o$results[,1]
+    y <- o$results[,2]
+    z <- o$results[,3]
+    so <- interp(x=x, y=y, z=z, linear = linear)
+    idx <- which.min(z)
+    x0 <- x[idx]
+    y0 <- y[idx]
+    filled.contour(x = so$x,
+                   y = so$y,
+                   z = so$z,
+                   xlim = range(so$x, finite = TRUE) + c(-2, 2),
+                   ylim = range(so$y, finite = TRUE) + c(-2, 2),
+                   color.palette =
+                     colorRampPalette(c("yellow", "red")),
+                   xlab = "nodesize",
+                   ylab = "mtry",
+                   main = "error rate for nodesize and mtry",
+                   key.title = title(main = "OOB error", cex.main = 1),
+                   plot.axes = {axis(1);axis(2);points(x0,y0,pch="x",cex=1,font=2);
+                                points(x,y,pch=16,cex=.25)})
+  }
+
+  ## plot the surface
+  plot.tune(o)
+
+}
+```
+
+
+
+```{r}
+
+
+vars <- c("age","aweekend","female","pl_nchs","tran_in","zipinc_qrtl","race","avg_monthly_temp","pay1","los")
+#data_sub$aprdrg_severity <- factor(data_sub$aprdrg_severity)
+
+data_sub <- data_sub_full
+data_sub_1 <- data_sub[, names(data_sub)%in%vars]
+data_sub_2 <- data_sub[, c(140:639)]
+data_sub <- cbind(data_sub_1,data_sub_2)
+data_sub <- data_sub[complete.cases(data_sub),]
+
+#data_sub <- data_sub %>% 
+#  group_split(aprdrg_severity_2bin) %>% 
+#  map2_dfr(c(10000,10000), ~ slice_sample(.x, n = .y))
+
+data_sub <- as.data.frame(data_sub)
+
+data_sub <- data_sub %>% slice_sample(n=2000)
+
+rf3 <- rfsrc(los ~ .,
+  data=data_sub, block.size = 1, importance = TRUE, mtry = 55, nodesize = 20)
+rf3
+
+plot(rf3)
+
+```
+
+
+```{r}
+vs.rf3 <- var.select(object = rf3, refit = TRUE)
+```
+
+
+
+
+```{r}
+data_sub_rf_vs <- data.frame(data_sub[,c(vs.rf3$topvars,"los")])
+
+rf4 <- rfsrc(los ~ .,
+  data=data_sub_rf_vs, importance = TRUE, mtry = 55, nodesize = 20)
+rf4
+
+plot(rf4)
+```
+
+
+

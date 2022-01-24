@@ -1,0 +1,148 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tableone)
+library(ggfortify )
+library(data.table)
+library('LaF')
+library('dplyr')
+library('stringr')
+library(dplyr)
+library(icd)
+library(readr)
+library(factoextra)
+library(icd)
+library(umap)
+library(randomForest)
+library(randomForestSRC)
+library(dplyr)
+library(purrr)
+```
+
+```{r}
+data_sub <- as.data.frame(fread("final_data.csv"))
+```
+
+```{r}
+seed = 1
+
+vars <- c("age","aweekend","female","pl_nchs","tran_in","zipinc_qrtl","race","avg_monthly_temp","pay1","los")
+#data_sub$aprdrg_severity <- factor(data_sub$aprdrg_severity)
+
+data_sub <- data_sub_full
+data_sub_1 <- data_sub[, names(data_sub)%in%vars]
+data_sub_2 <- data_sub[, c(140:639)]
+data_sub <- cbind(data_sub_1,data_sub_2)
+data_sub <- data_sub[complete.cases(data_sub),]
+
+#data_sub <- data_sub %>% 
+#  group_split(aprdrg_severity_2bin) %>% 
+#  map2_dfr(c(10000,10000), ~ slice_sample(.x, n = .y))
+
+data_sub <- as.data.frame(data_sub)
+
+data_sub <- data_sub %>% slice_sample(n=2000)
+
+split1<- sample(c(rep(0, 0.5 * nrow(data_sub)), rep(1, 0.5 * nrow(data_sub))))
+
+train <- data[split1 == 0, ]   
+test <- data[split1 == 1, ]   
+```
+
+
+```{r}
+data_sub_optium <- train %>% slice_sample(n=2000)
+
+o <- tune(los ~ .,
+  data=data_sub_optium, block.size = 1, doBest = TRUE)
+
+print(o$rf)
+
+## visualize the nodesize/mtry OOB surface
+if (library("akima", logical.return = TRUE)) {
+
+  ## nice little wrapper for plotting results
+  plot.tune <- function(o, linear = TRUE) {
+    x <- o$results[,1]
+    y <- o$results[,2]
+    z <- o$results[,3]
+    so <- interp(x=x, y=y, z=z, linear = linear)
+    idx <- which.min(z)
+    x0 <- x[idx]
+    y0 <- y[idx]
+    filled.contour(x = so$x,
+                   y = so$y,
+                   z = so$z,
+                   xlim = range(so$x, finite = TRUE) + c(-2, 2),
+                   ylim = range(so$y, finite = TRUE) + c(-2, 2),
+                   color.palette =
+                     colorRampPalette(c("yellow", "red")),
+                   xlab = "nodesize",
+                   ylab = "mtry",
+                   main = "error rate for nodesize and mtry",
+                   key.title = title(main = "OOB error", cex.main = 1),
+                   plot.axes = {axis(1);axis(2);points(x0,y0,pch="x",cex=1,font=2);
+                                points(x,y,pch=16,cex=.25)})
+  }
+
+  ## plot the surface
+  plot.tune(o)
+
+}
+```
+
+
+
+```{r}
+
+
+vars <- c("age","aweekend","female","pl_nchs","tran_in","zipinc_qrtl","race","avg_monthly_temp","pay1","los")
+#data_sub$aprdrg_severity <- factor(data_sub$aprdrg_severity)
+
+data_sub <- data_sub_full
+data_sub_1 <- data_sub[, names(data_sub)%in%vars]
+data_sub_2 <- data_sub[, c(140:639)]
+data_sub <- cbind(data_sub_1,data_sub_2)
+data_sub <- data_sub[complete.cases(data_sub),]
+
+#data_sub <- data_sub %>% 
+#  group_split(aprdrg_severity_2bin) %>% 
+#  map2_dfr(c(10000,10000), ~ slice_sample(.x, n = .y))
+
+data_sub <- as.data.frame(data_sub)
+
+data_sub <- data_sub %>% slice_sample(n=2000)
+
+rf3 <- rfsrc(los ~ .,
+  data=data_sub, block.size = 1, importance = TRUE, mtry = 55, nodesize = 20)
+rf3
+
+plot(rf3)
+
+```
+
+
+```{r}
+vs.rf3 <- var.select(object = rf3, refit = TRUE)
+```
+
+
+
+
+```{r}
+data_sub_rf_vs <- data.frame(data_sub[,c(vs.rf3$topvars,"los")])
+
+rf4 <- rfsrc(los ~ .,
+  data=data_sub_rf_vs, importance = TRUE, mtry = 55, nodesize = 20)
+rf4
+
+plot(rf4)
+```
